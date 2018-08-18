@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="author" content="Valerie Slepak">
+    <meta http-equiv="Cache-Control" content="no-cache" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"/>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/4.10.1/firebase.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vuefire/1.4.5/vuefire.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.5.13/vue.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <script src="list.js" async></script>
+    <title>Not-Quite-Trello</title>
+</head>
+<body>
+    <header class="header">
+        <h1>Not-Quite-Trello</h1>
+    </header>
+
+    <div id="listapp">
+        <section class="userInfo" v-cloak>
+            <!-- this div displays before a user logs in or signs up -->
+            <div class="login" v-bind:style=loginStyle>
+                <!-- this allows a new user to sign up -->
+                <div id="new-user">
+                    <input type="text" placeholder="Name" v-model="newName">
+                    <input type="text" placeholder="Email Address" v-model="newEmail">
+                    <input type="text" placeholder="Image URL (Optional)" v-model="newImg">
+                    <button class="loginB" v-on:click="addUser">Sign Up</button>
+                </div>
+                <!-- this allows an existing user to sign in with name or email address -->
+                <div id="existing-user">
+                    <input type="text" placeholder="Name or Email Address" v-model="attempt">
+                    <button class="loginB" v-on:click="checkExists(attempt)">Sign In</button>
+                </div>
+            </div>
+            <!-- once a user has signed in, they have the option to sign out and let a new user in -->
+            <div id="welcome" v-if="currUser.name != ''">
+                <img :src="currUser.image" alt="img">
+                <button class="signOut" @click="signOut">Sign Out</button>
+                <h2>Welcome {{ currUser.name }}!</h2>
+                <input type="text" placeholder="Change Name" v-model="editName" @keyUp.enter="changeName">
+                <input type="text" placeholder="Change Email Address" v-model="editEmail" @keyUp.enter="changeEmail">
+                <input type="text" placeholder="Change Image" v-model="editImg" @keyUp.enter="changeImg">
+            </div> 
+        </section>
+        <section class="main" v-cloak>
+            <div class="intro">
+                <button class="createList" v-on:click ="addList">+ Create new list</button>
+                <!-- dropdown filter menu created to allow user to sort cards by category -->
+                <select id="filt" @change="filterCards()">
+                    <option value="all" id="all">All</option>
+                    <option value="normal" id="normal">Normal</option>
+                    <option value="urgent" id="urgent">Urgent</option>
+                </select>
+            </div>
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="list" v-for="list in lists">
+                        <div class="view" v-bind:style="list.listStyle">
+                            <!-- this section establishes all of the list functionality -->
+                            <h3>{{ list.title }}</h3>
+                            <input class="new-title" placeholder="Title" v-model="list.newTitle" @keyup.enter="setTitle(list.id)">
+                            <button class="destroyList" @click="removeList(list, list.id)">X</button><br>
+                            <input type="text" onfocus="this.value=''" placeholder="Background color"  v-model="list.bgcolor" @keyup.enter="setBgColor(list.id)"><br>
+                            <input class="new-card" placeholder="Add a card" v-model="list.newCard.title" @keyup.enter="addCard(list, list.id)">
+                            <div class="listButtons">
+                                <button class="moveListR" v-on:click="moveRight(list.id)">&gt;</button>
+                                <button class="moveListL" v-on:click="moveLeft(list.id)">&lt;</button>
+                                <button class="collapseList" v-on:click="expand(list.id)">Expand</button>
+                                <button class="collapseList" v-on:click="collapse(list.id)">Collapse</button>
+                                <button class="collapseList" v-on:click="showActLog(list.id)">Activity Log</button>
+                            </div>
+                            <div class="cards" v-for="card in list.cards">
+                                <div class="cardButtons" v-bind:style="card.buttonStyle">
+                                    <!-- this section displays the card title and comments, and includes all of the card buttons -->
+                                    <h4>{{ card.title }}</h4>
+                                    <input class="editTitle" placeholder="Change title?" v-model="card.newTitle" @keyup.enter="changeTitle(card, list.id)">
+                                    <input class="comment" placeholder="Comments?" v-model="card.newComment" @keyup.enter="addComment(card, list.id)">
+                                    <ul class="comments">
+                                        <li class="comments" v-for="comment in card.comments">
+                                            <div class="view2">
+                                                <label>{{ comment.text }}</label>
+                                                <button class="destroy" @click="removeComment(comment, card, list.id)">X</button>
+                                            </div>
+                                        </li>
+                                    </ul>
+                                    <button class="cardR" v-on:click="moveCardRight(card, list, list.id)">&gt;</button>
+                                    <button class="cardL" v-on:click="moveCardLeft(card, list, list.id)">&lt;</button>
+                                    <button class="cardButton" v-on:click="showCardInfo(card, list.id)">Show/hide details</button>
+                                    <button class="destroy" @click="removeCard(card, list.id)">Remove Card</button><br>
+                                </div>
+                                
+                                <div class="cardDiv" v-bind:style="card.cardStyle">
+                                    <!-- this section includes all of the card details, and opens up when the details button is clicked -->
+                                    <div class="cardItem"> 
+                                        <input type="text" placeholder="Description" v-model=card.description><br>
+                                        <input type="text" placeholder="Image URL" v-model=card.image><br>
+                                        <br>Date created:<p>{{ card.dateCreated }}</p>
+                                        <input placeholder="Deadline" type="text" onfocus="(this.type='date')" onblur="(this.type='text')" id="date" v-model=card.deadline><br>
+<!--                                            <input type=image >-->
+                                        <br>Category: <select v-model="card.category" @change="setCardColor(card, list.id)">
+                                            <option value="none">None</option>
+                                            <option value="normal">Normal</option>
+                                            <option value="urgent">Urgent</option>
+                                        </select><br>
+                                        <!-- this section creates a mini todo-list within the card -->
+                                        <br><input class="new-todo" placeholder="What needs to be done?" v-model="card.newTodo" @keyup.enter="addTodo(card, list.id)">
+                                        <ul class="todo-list">
+                                            <li class="todo" v-for="todo in card.todos">
+                                                <div class="view2">
+                                                    <label>{{ todo.title }}</label>
+                                                    <button class="destroy" @click="removeTodo(todo, card, list.id)">X</button>
+                                                </div>
+                                            </li>
+                                        </ul><br>
+                                        Select a user to add to your card!
+                                        <select id="usr" @change="addCardUser(card, list.id)">
+                                            <option value="null">N/A</option>
+                                            <option value="{{ user.name }}" v-for="user in users">
+                                                {{ user.name }}
+                                            </option>
+                                        </select>
+                                        <ul class="user-list">
+                                            <li class="users" v-for="user in card.cardUsers">
+                                                <label class="users">{{ user.user }}</label>
+                                                <button class="destroy" @click="removeUser(card, list.id, user.user)">X</button>
+                                            </li> 
+                                        </ul>  
+                                     </div>
+                                </div> 
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+    <div id = "footer">  
+        <a id="return" href="#top">Return to top of page.</a>
+        <hr>
+        <p>&copy; 2018 Valerie Slepak</p>
+    </div> 
+</body>
+</html>
